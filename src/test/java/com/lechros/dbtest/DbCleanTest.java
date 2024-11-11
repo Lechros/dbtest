@@ -41,27 +41,26 @@ public class DbCleanTest {
 
     @Test
     public void addUsers() throws InterruptedException {
-        final int COUNT = 6;
+        final int COUNT = 1000;
 
         List<User> users = new ArrayList<>(COUNT);
         for (int i = 0; i < COUNT; i++) {
             users.add(userWithName("TEST_USER_NAME#" + i));
         }
 
-        ExecutorService service = Executors.newFixedThreadPool(COUNT);
+        ExecutorService service = Executors.newFixedThreadPool(3);
         CountDownLatch latch = new CountDownLatch(COUNT);
 
         for (int i = 0; i < COUNT; i++) {
-            final int index = i;
+            User user = users.get(i);
             service.execute(() -> {
-                userService.addUser(users.get(index));
+                userService.addUser(user);
                 latch.countDown();
             });
         }
 
         latch.await();
 
-        Thread.sleep(500);
         List<User> savedUsers = userRepository.findAll();
         assertThat(savedUsers).hasSize(COUNT);
     }
