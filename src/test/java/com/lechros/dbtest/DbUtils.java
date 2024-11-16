@@ -5,12 +5,14 @@ import jakarta.persistence.*;
 import jakarta.persistence.metamodel.EntityType;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static java.util.Objects.nonNull;
+import static org.springframework.util.StringUtils.hasText;
 
 @TestComponent
 public class DbUtils {
@@ -48,7 +50,7 @@ public class DbUtils {
 
     private String getTableName(EntityType<?> entity) {
         Table table = entity.getJavaType().getAnnotation(Table.class);
-        if (table != null && StringUtils.hasText(table.name())) {
+        if (nonNull(table) && hasText(table.name())) {
             return table.name();
         }
         return javaNameToSqlName(entity.getName());
@@ -59,7 +61,7 @@ public class DbUtils {
             new RuntimeException(String.format("Entity '%s' has no @Id field", entity.getName())));
 
         Column column = field.getAnnotation(Column.class);
-        if (column != null && StringUtils.hasText(column.name())) {
+        if (nonNull(column) && hasText(column.name())) {
             return column.name();
         }
         return javaNameToSqlName(field.getName());
