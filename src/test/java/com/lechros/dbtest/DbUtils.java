@@ -7,9 +7,8 @@ import org.springframework.boot.test.context.TestComponent;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Field;
-import java.util.Map;
+import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import static java.util.Objects.nonNull;
 import static org.springframework.util.StringUtils.hasText;
@@ -20,32 +19,40 @@ public class DbUtils {
     @PersistenceContext
     private EntityManager entityManager;
 
-    private Map<String, String> tableNameIdColumnNameMappings;
+    private List<Entity> entities;
 
     @PostConstruct
-    private void loadTableNames() {
-        tableNameIdColumnNameMappings = entityManager.getMetamodel().getEntities().stream()
-            .collect(Collectors.toMap(this::getTableName, this::getIdColumnName));
+    private void loadEntities() {
+        entities = entityManager.getMetamodel().getEntities().stream().map(this::toEntity).toList();
     }
 
     /**
-     * 모든 엔터티 테이블의 데이터를 삭제하고, 각 테이블의 ID 컬럼을 1로 초기화합니다.
+     * 모든 엔터티 테이블의 데이터를 삭제하고, 각 테이블의 자동 생성 ID 컬럼을 1로 초기화합니다.
      */
     @Transactional
     public void resetAllTables() {
         entityManager.flush();
         executeUpdate("SET REFERENTIAL_INTEGRITY FALSE");
-        for (Map.Entry<String, String> entry : tableNameIdColumnNameMappings.entrySet()) {
-            String tableName = entry.getKey();
-            String idColumnName = entry.getValue();
+        for (Entity entity : entities) {
+            String tableName = entity.tableName();
+            String idColumnName = entity.idColumnName();
             executeUpdate(String.format("TRUNCATE TABLE `%s`", tableName));
-            executeUpdate(String.format("ALTER TABLE `%s` ALTER COLUMN `%s` RESTART WITH 1", tableName, idColumnName));
+            if (nonNull(idColumnName)) {
+                executeUpdate(String.format("ALTER TABLE `%s` ALTER COLUMN `%s` RESTART WITH 1", tableName, idColumnName));
+            }
         }
         executeUpdate("SET REFERENTIAL_INTEGRITY TRUE");
     }
 
     private void executeUpdate(String sql) {
         entityManager.createNativeQuery(sql).executeUpdate();
+    }
+
+    private record Entity(String tableName, String idColumnName) {
+    }
+
+    private Entity toEntity(EntityType<?> entityType) {
+        return new Entity(getTableName(entityType), getIdColumnName(entityType));
     }
 
     private String getTableName(EntityType<?> entity) {
@@ -57,14 +64,13 @@ public class DbUtils {
     }
 
     private String getIdColumnName(EntityType<?> entity) {
-        Field field = findIdField(entity).orElseThrow(() ->
-            new RuntimeException(String.format("Entity '%s' has no @Id field", entity.getName())));
-
-        Column column = field.getAnnotation(Column.class);
-        if (nonNull(column) && hasText(column.name())) {
-            return column.name();
-        }
-        return javaNameToSqlName(field.getName());
+        return findIdField(entity).map(field -> {
+            Column column = field.getAnnotation(Column.class);
+            if (nonNull(column) && hasText(column.name())) {
+                return column.name();
+            }
+            return javaNameToSqlName(field.getName());
+        }).orElse(null);
     }
 
     private Optional<Field> findIdField(EntityType<?> entity) {
